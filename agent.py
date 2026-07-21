@@ -10,7 +10,7 @@ from tools import semantic_search, read_file, list_directory, grep_search
 load_dotenv()
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama-3.3-70b-versatile"  # free tier, strong reasoning + tool use
+MODEL = "llama-3.1-8b-instant"
 
 # Tool schemas the model uses to decide what to call
 TOOL_SCHEMAS = [
@@ -74,6 +74,9 @@ TOOL_SCHEMAS = [
 
 SYSTEM_PROMPT = """You are a codebase assistant. You have tools to explore a real codebase: \
 semantic search, reading full files, listing directories, and exact-match grep search.
+
+You MUST use the proper tool-calling mechanism to invoke tools — never write a tool call as plain text \
+in your response. Only call tools that are defined in the tools list provided to you.
 
 Use tools as needed — you may call several in sequence to gather enough context before answering. \
 Always ground your answer in what the tools actually returned; do not guess at code you haven't seen. \
