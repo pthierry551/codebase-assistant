@@ -8,7 +8,7 @@ from embed_store import EmbedStore
 from ingest import IGNORE_DIRS, CODE_EXTENSIONS
 
 
-def semantic_search(store: EmbedStore, query: str, n_results: int = 5):
+def semantic_search(store: EmbedStore, query: str, n_results: int = 3):
     """Search the codebase by meaning, not exact text."""
     results = store.query(query, n_results=n_results)
     output = []
@@ -16,13 +16,13 @@ def semantic_search(store: EmbedStore, query: str, n_results: int = 5):
         output.append({
             "filepath": meta["filepath"],
             "lines": f"{meta['start_line']}-{meta['end_line']}",
-            "content": doc,
+            "content": doc[:500],  # cap chunk size sent back to the model
         })
     return output
 
 
-def read_file(repo_path: str, filepath: str):
-    """Read a full file's contents given its relative path."""
+def read_file(repo_path: str, filepath: str, max_chars: int = 3000):
+    """Read a file's contents given its relative path, truncated if very large."""
     full_path = Path(repo_path) / filepath
     if not full_path.exists():
         return (
@@ -32,6 +32,8 @@ def read_file(repo_path: str, filepath: str):
         )
     try:
         content = full_path.read_text(encoding="utf-8", errors="ignore")
+        if len(content) > max_chars:
+            content = content[:max_chars] + f"\n\n... [truncated, file has {len(content)} total characters]"
         return content
     except Exception as e:
         return f"Error reading file: {e}"
