@@ -100,16 +100,23 @@ elif "agent" in st.session_state:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        question = st.chat_input("Ask about the codebase...")
-        if question:
-            st.session_state.messages.append({"role": "user", "content": question})
+    with tree_col:
+        st.markdown("**Project files**")
+        st.markdown(st.session_state.file_tree_html, unsafe_allow_html=True)
+
+    # Called at top level (not inside a column) so Streamlit pins it to the bottom of the page
+    question = st.chat_input("Ask about the codebase...")
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question})
+        with chat_col:
             with st.chat_message("user"):
                 st.markdown(question)
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
                     answer = st.session_state.agent.ask(question)
                 st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.rerun()
 
     with tree_col:
         st.markdown("**Project files**")
