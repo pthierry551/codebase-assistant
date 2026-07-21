@@ -1,13 +1,16 @@
 import os
 import base64
 import tempfile
+import time
 import shutil
 import requests
 from pathlib import Path
 from ingest import CODE_EXTENSIONS, IGNORE_DIRS
 from github_check import parse_github_url, get_default_branch, get_repo_tree
+from dotenv import load_dotenv
+load_dotenv()
 
-GITHUB_TOKEN = None
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 
 def _headers():
@@ -28,20 +31,32 @@ def cleanup_old_github_temp_dirs():
         print(f"Cleaned up {removed} leftover temp folder(s) from previous sessions.")
 
 
-def fetch_blob_content(owner: str, repo: str, sha: str):
-    """Fetch a single file's content by its blob SHA."""
+def fetch_blob_content(owner: str, repo: str, sha: str, max_retries: int = 3):
+    """Fetch a single file's content by its blob SHA, retrying on transient errors."""
     url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{sha}"
-    response = requests.get(url, headers=_headers())
-    response.raise_for_status()
-    data = response.json()
 
-    if data.get("encoding") != "base64":
-        return None
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=_headers(), timeout=15)
+            response.raise_for_status()
+            data = response.json()
 
-    try:
-        return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
-    except Exception:
-        return None
+            if data.get("encoding") != "base64":
+                return None
+
+            return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
+
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            wait = 2 ** attempt  # 1s, 2s, 4s
+            print(f"  Network hiccup fetching a file (attempt {attempt + 1}/{max_retries}), retrying in {wait}s...")
+            time.sleep(wait)
+        except requests.exceptions.HTTPError as e:
+            # Rate limit or real API error — don't retry blindly, surface it
+            print(f"  Skipping file due to API error: {e}")
+            return None
+
+    print(f"  Giving up on this file after {max_retries} attempts.")
+    return None
 
 
 def download_github_repo(repo_url: str, max_files: int = 200) -> str:
