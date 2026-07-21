@@ -66,7 +66,7 @@ def estimate_ingestible_size(repo_url: str):
 
 
 MAX_SIZE_KB = (
-    5000  # ~5MB of repo content — reasonable ceiling for our free-tier LLM setup
+    15000  # ~15MB of repo content — reasonable ceiling for our free-tier LLM setup
 )
 
 
