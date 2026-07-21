@@ -17,9 +17,9 @@ class EmbedStore:
         self.client = chromadb.PersistentClient(path=db_path)
         self.collection = self.client.get_or_create_collection(COLLECTION_NAME)
 
-    def add_chunks(self, chunks: list[dict], batch_size: int = 100):
-        """Embed and store chunks in batches."""
-        for i in range(0, len(chunks), batch_size):
+    def add_chunks(self, chunks: list[dict], batch_size: int = 100, progress_callback=None):
+        total = len(chunks)
+        for i in range(0, total, batch_size):
             batch = chunks[i:i + batch_size]
             texts = [c["text"] for c in batch]
             embeddings = self.model.encode(texts, show_progress_bar=False).tolist()
@@ -30,46 +30,57 @@ class EmbedStore:
                 for c in batch
             ]
 
-            self.collection.add(
-                ids=ids,
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=metadatas,
-            )
-            print(f"  Embedded {min(i + batch_size, len(chunks))}/{len(chunks)} chunks")
+            self.collection.add(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
 
-    def query(self, question: str, n_results: int = 5):
-        """Semantic search: return top-N most relevant chunks for a question."""
+            if progress_callback:
+                progress_callback(min(i + batch_size, total), total)
+
+    def query(self, question: str, n_results: int = 3):
         query_embedding = self.model.encode([question]).tolist()
-        results = self.collection.query(
-            query_embeddings=query_embedding,
-            n_results=n_results,
-        )
-        return results
+        return self.collection.query(query_embeddings=query_embedding, n_results=n_results)
 
     def count(self):
         return self.collection.count()
 
 
-def build_index(repo_path_or_url: str, db_path: str = DB_PATH):
+def build_index(repo_path_or_url: str, db_path: str = DB_PATH, status_callback=None):
+    """
+    status_callback(percent: int, message: str) is called throughout, so a UI
+    can show live progress + a human-readable explanation of the current step.
+    """
+    def report(pct, message):
+        if status_callback:
+            status_callback(pct, message)
+
     if repo_path_or_url.startswith("https://github.com"):
+        report(0, "Checking the GitHub repo and preparing to download its files...")
         from github_ingest import download_github_repo
-        repo_path = download_github_repo(repo_path_or_url)
+
+        def download_progress(current, total):
+            pct = int((current / total) * 40) if total else 0
+            report(pct, f"Downloading source files from GitHub ({current} of {total})...")
+
+        repo_path = download_github_repo(repo_path_or_url, progress_callback=download_progress)
     else:
         repo_path = repo_path_or_url
+        report(5, "Reading files from the local folder...")
 
-    print(f"Ingesting: {repo_path}")
+    report(45, "Scanning files and splitting them into searchable chunks...")
     chunks = ingest_repo(repo_path)
-    print(f"Got {len(chunks)} chunks. Embedding and storing...")
 
+    report(50, f"Found {len(chunks)} code sections. Loading the embedding model...")
     store = EmbedStore(db_path)
-    store.add_chunks(chunks)
 
-    # Record what's currently indexed
+    def embed_progress(current, total):
+        pct = 50 + int((current / total) * 50) if total else 50
+        report(pct, f"Building the search index ({current} of {total} chunks)...")
+
+    store.add_chunks(chunks, progress_callback=embed_progress)
+
     with open(INDEX_META_PATH, "w") as f:
         json.dump({"source": repo_path_or_url}, f)
 
-    print(f"Done. Collection now has {store.count()} chunks stored.")
+    report(100, "Index ready.")
     return store, repo_path
 
 

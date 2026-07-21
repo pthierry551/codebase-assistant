@@ -59,11 +59,10 @@ def fetch_blob_content(owner: str, repo: str, sha: str, max_retries: int = 3):
     return None
 
 
-def download_github_repo(repo_url: str, max_files: int = 200) -> str:
+def download_github_repo(repo_url: str, max_files: int = 200, progress_callback=None) -> str:
     """
-    Fetch a public GitHub repo's relevant files via the API and write them
-    into a fresh temp folder on disk. Cleans up leftover folders from
-    previous sessions first.
+    progress_callback(current: int, total: int) is called after each file download,
+    so callers can render progress (e.g. a progress bar).
     """
     cleanup_old_github_temp_dirs()
 
@@ -83,27 +82,21 @@ def download_github_repo(repo_url: str, max_files: int = 200) -> str:
         relevant_entries.append(entry)
 
     if len(relevant_entries) > max_files:
-        print(f"Warning: {len(relevant_entries)} files found, capping at {max_files}.")
         relevant_entries = relevant_entries[:max_files]
 
     temp_dir = tempfile.mkdtemp(prefix=f"github_{owner}_{repo}_")
-    print(f"Downloading into temp folder: {temp_dir}")
+    total = len(relevant_entries)
 
-    written = 0
     for i, entry in enumerate(relevant_entries):
         content = fetch_blob_content(owner, repo, entry["sha"])
-        if not content or not content.strip():
-            continue
+        if content and content.strip():
+            dest_path = Path(temp_dir) / entry["path"]
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            dest_path.write_text(content, encoding="utf-8")
 
-        dest_path = Path(temp_dir) / entry["path"]
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        dest_path.write_text(content, encoding="utf-8")
-        written += 1
+        if progress_callback:
+            progress_callback(i + 1, total)
 
-        if (i + 1) % 20 == 0:
-            print(f"  Fetched {i + 1}/{len(relevant_entries)} files...")
-
-    print(f"Done. {written} files written to {temp_dir}")
     return temp_dir
 
 

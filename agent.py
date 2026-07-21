@@ -97,7 +97,7 @@ def _get_indexed_source():
 
 
 class Agent:
-    def __init__(self, repo_path_or_url: str):
+    def __init__(self, repo_path_or_url: str, status_callback=None):
         self.is_github = repo_path_or_url.startswith("https://github.com")
         self.store = EmbedStore()
 
@@ -105,63 +105,26 @@ class Agent:
         needs_rebuild = self.store.count() == 0 or indexed_source != repo_path_or_url
 
         if needs_rebuild:
-            print(f"Index is empty or for a different repo — rebuilding for: {repo_path_or_url}")
-            # wipe existing collection so old + new chunks don't mix
-            self.store.client.delete_collection(self.store.collection.name)
-            self.store, self.repo_path = build_index(repo_path_or_url)
+            if self.store.count() > 0:
+                self.store.client.delete_collection(self.store.collection.name)
+            self.store, self.repo_path = build_index(repo_path_or_url, status_callback=status_callback)
         elif self.is_github:
             from github_ingest import download_github_repo
-            print(f"Using existing index. Downloading files for tool access: {repo_path_or_url}")
-            self.repo_path = download_github_repo(repo_path_or_url)
+            if status_callback:
+                status_callback(10, "Re-downloading repo files for this session...")
+
+            def download_progress(current, total):
+                pct = int((current / total) * 90) if total else 10
+                if status_callback:
+                    status_callback(10 + pct // 10, f"Downloading source files ({current} of {total})...")
+
+            self.repo_path = download_github_repo(repo_path_or_url, progress_callback=download_progress)
+            if status_callback:
+                status_callback(100, "Index ready.")
         else:
             self.repo_path = repo_path_or_url
-
-    def _call_tool(self, name: str, args: dict):
-        if name == "semantic_search":
-            return semantic_search(self.store, args["query"])
-        elif name == "read_file":
-            return read_file(self.repo_path, args["filepath"])
-        elif name == "list_directory":
-            return list_directory(self.repo_path, args.get("subpath", "."))
-        elif name == "grep_search":
-            return grep_search(self.repo_path, args["pattern"])
-        else:
-            return f"Unknown tool: {name}"
-
-    def ask(self, question: str, max_turns: int = 5):
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ]
-
-        for turn in range(max_turns):
-            response = client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                tools=TOOL_SCHEMAS,
-                tool_choice="auto",
-            )
-            msg = response.choices[0].message
-
-            if not msg.tool_calls:
-                # Model is done — this is the final answer
-                return msg.content
-
-            # Model wants to call one or more tools
-            messages.append(msg)
-            for tool_call in msg.tool_calls:
-                fn_name = tool_call.function.name
-                fn_args = json.loads(tool_call.function.arguments) or {}
-                print(f"  [tool call] {fn_name}({fn_args})")
-
-                result = self._call_tool(fn_name, fn_args)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": json.dumps(result) if not isinstance(result, str) else result,
-                })
-
-        return "Reached max tool-call turns without a final answer."
+            if status_callback:
+                status_callback(100, "Index ready.")
 
 
 if __name__ == "__main__":
