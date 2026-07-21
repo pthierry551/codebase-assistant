@@ -1,12 +1,41 @@
-# ingest.py
 import os
 from pathlib import Path
 
 # File types we care about for a code assistant
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs", ".md"}
 
-# Directories to skip
-IGNORE_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
+# Directories to skip — build output, deps, caches, VCS
+IGNORE_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    ".next",
+    "out",
+    "coverage",
+    ".turbo",
+    ".vercel",
+    "public",
+    ".cache",
+}
+
+# Filename patterns that indicate generated/minified/vendor code
+IGNORE_FILE_SUFFIXES = (".min.js", ".min.css", ".d.ts", ".map")
+
+# Skip files above this size — almost always bundles/generated, not hand-written code
+MAX_FILE_SIZE_BYTES = 200_000
+
+
+def is_probably_minified(content: str, sample_lines: int = 20) -> bool:
+    """Heuristic: minified/bundled code has very long lines and little whitespace."""
+    lines = content.splitlines()[:sample_lines]
+    if not lines:
+        return False
+    avg_len = sum(len(l) for l in lines) / len(lines)
+    return avg_len > 300  # hand-written code rarely averages this long per line
 
 
 def walk_repo(repo_path: str):
@@ -19,12 +48,22 @@ def walk_repo(repo_path: str):
             continue
         if path.suffix not in CODE_EXTENSIONS:
             continue
+        if any(path.name.endswith(suf) for suf in IGNORE_FILE_SUFFIXES):
+            continue
+        try:
+            if path.stat().st_size > MAX_FILE_SIZE_BYTES:
+                continue
+        except OSError:
+            continue
         try:
             content = path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
-        if content.strip():
-            yield str(path.relative_to(repo_path)), content
+        if not content.strip():
+            continue
+        if is_probably_minified(content):
+            continue
+        yield str(path.relative_to(repo_path)), content
 
 
 def chunk_file(filepath: str, content: str, max_lines: int = 60):
