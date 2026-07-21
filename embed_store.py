@@ -50,12 +50,17 @@ class EmbedStore:
         return self.collection.count()
 
 
-def build_index(repo_path: str, db_path: str = DB_PATH):
-    """Full pipeline: ingest repo -> embed -> store."""
-    print(f"Ingesting {repo_path}...")
-    chunks = ingest_repo(repo_path)
-    print(f"Got {len(chunks)} chunks. Embedding and storing...")
+def build_index(repo_path_or_url: str, db_path: str = DB_PATH):
+    """Full pipeline: ingest (local folder or GitHub URL) -> embed -> store."""
+    if repo_path_or_url.startswith("https://github.com"):
+        print(f"Detected GitHub URL. Ingesting via API: {repo_path_or_url}")
+        from github_ingest import ingest_github_repo
+        chunks = ingest_github_repo(repo_path_or_url)
+    else:
+        print(f"Ingesting local folder: {repo_path_or_url}")
+        chunks = ingest_repo(repo_path_or_url)
 
+    print(f"Got {len(chunks)} chunks. Embedding and storing...")
     store = EmbedStore(db_path)
     store.add_chunks(chunks)
     print(f"Done. Collection now has {store.count()} chunks stored.")
