@@ -126,6 +126,53 @@ class Agent:
             if status_callback:
                 status_callback(100, "Index ready.")
 
+    def _call_tool(self, name: str, args: dict):
+        if name == "semantic_search":
+            return semantic_search(self.store, args["query"])
+        elif name == "read_file":
+            return read_file(self.repo_path, args["filepath"])
+        elif name == "list_directory":
+            return list_directory(self.repo_path, args.get("subpath", "."))
+        elif name == "grep_search":
+            return grep_search(self.repo_path, args["pattern"])
+        else:
+            return f"Unknown tool: {name}"
+
+    def ask(self, question: str, max_turns: int = 5):
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": question},
+        ]
+
+        for turn in range(max_turns):
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                tools=TOOL_SCHEMAS,
+                tool_choice="auto",
+            )
+            msg = response.choices[0].message
+
+            if not msg.tool_calls:
+                # Model is done — this is the final answer
+                return msg.content
+
+            # Model wants to call one or more tools
+            messages.append(msg)
+            for tool_call in msg.tool_calls:
+                fn_name = tool_call.function.name
+                fn_args = json.loads(tool_call.function.arguments) or {}
+                print(f"  [tool call] {fn_name}({fn_args})")
+
+                result = self._call_tool(fn_name, fn_args)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result) if not isinstance(result, str) else result,
+                })
+
+        return "Reached max tool-call turns without a final answer."
+
 
 if __name__ == "__main__":
     import sys
