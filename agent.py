@@ -78,6 +78,11 @@ semantic search, reading full files, listing directories, and exact-match grep s
 You MUST use the proper tool-calling mechanism to invoke tools — never write a tool call as plain text \
 in your response. Only call tools that are defined in the tools list provided to you.
 
+CRITICAL: When you call a tool using information from a previous tool's result (like a filepath found \
+via grep_search or semantic_search), you MUST copy the exact value from that result. Never invent, \
+guess, or use a placeholder path like 'path/to/file.ts' — only use paths you have actually seen in a \
+tool result.
+
 Use tools as needed — you may call several in sequence to gather enough context before answering. \
 Always ground your answer in what the tools actually returned; do not guess at code you haven't seen. \
 Cite file paths and line numbers when relevant. If you're not confident after searching, say so."""

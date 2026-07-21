@@ -24,6 +24,12 @@ def semantic_search(store: EmbedStore, query: str, n_results: int = 5):
 def read_file(repo_path: str, filepath: str):
     """Read a full file's contents given its relative path."""
     full_path = Path(repo_path) / filepath
+    if not full_path.exists():
+        return (
+            f"Error: '{filepath}' does not exist in the repo. "
+            f"Do not guess paths — only use filepaths exactly as they appeared in a previous "
+            f"grep_search or semantic_search result."
+        )
     try:
         content = full_path.read_text(encoding="utf-8", errors="ignore")
         return content
