@@ -100,10 +100,6 @@ elif "agent" in st.session_state:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-    with tree_col:
-        st.markdown("**Project files**")
-        st.markdown(st.session_state.file_tree_html, unsafe_allow_html=True)
-
     # Called at top level (not inside a column) so Streamlit pins it to the bottom of the page
     question = st.chat_input("Ask about the codebase...")
     if question:
