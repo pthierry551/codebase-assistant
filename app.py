@@ -54,86 +54,84 @@ search, exact grep) with an **agent** that decides which tool to use per questio
         st.rerun()
 
 
-title_col, help_col = st.columns([6, 1])
+title_col, files_col, help_col = st.columns([5, 1, 1])
 with title_col:
     st.title("🔍 Codebase Assistant")
+with files_col:
+    st.write("")
+    if st.session_state.repo_locked and st.session_state.file_tree_html:
+        with st.popover("📁 Files", use_container_width=True):
+            st.markdown("**Project files**")
+            st.markdown(st.session_state.file_tree_html, unsafe_allow_html=True)
 with help_col:
     st.write("")
-    if st.button("ℹ️ Help"):
+    if st.button("ℹ️ Help", use_container_width=True):
         show_about()
 
-CONTENT_HEIGHT = 650
-main_col, tree_col = st.columns([3, 1])
+# --- Repo input row: same structure every run, only its contents change ---
+input_col, button_col = st.columns([5, 1])
+with input_col:
+    if st.session_state.repo_locked:
+        st.text(st.session_state.repo_input)
+    else:
+        st.session_state.repo_input = st.text_input(
+            "Repo",
+            value=st.session_state.repo_input,
+            placeholder="Local folder path or GitHub URL",
+            label_visibility="collapsed",
+        )
+with button_col:
+    if st.session_state.repo_locked:
+        if st.button("Change", use_container_width=True):
+            st.session_state.repo_locked = False
+            st.session_state.pop("agent", None)
+            st.session_state.messages = []
+            st.session_state.file_tree_html = None
+            st.rerun()
+    else:
+        if st.button("Start", use_container_width=True, type="primary", disabled=not st.session_state.repo_input.strip()):
+            st.session_state.repo_locked = True
+            st.rerun()
 
-with main_col:
-    # --- Repo input row: same structure every run, only its contents change ---
-    input_col, button_col = st.columns([5, 1])
-    with input_col:
-        if st.session_state.repo_locked:
-            st.text(st.session_state.repo_input)
-        else:
-            st.session_state.repo_input = st.text_input(
-                "Repo",
-                value=st.session_state.repo_input,
-                placeholder="Local folder path or GitHub URL",
-                label_visibility="collapsed",
-            )
-    with button_col:
-        if st.session_state.repo_locked:
-            if st.button("Change", use_container_width=True):
-                st.session_state.repo_locked = False
-                st.session_state.pop("agent", None)
-                st.session_state.messages = []
-                st.session_state.file_tree_html = None
-                st.rerun()
-        else:
-            if st.button("Start", use_container_width=True, type="primary", disabled=not st.session_state.repo_input.strip()):
-                st.session_state.repo_locked = True
-                st.rerun()
+# --- Build the agent (only once, right after locking) ---
+if st.session_state.repo_locked and "agent" not in st.session_state:
+    status_box = st.empty()
+    progress_bar = st.progress(0)
 
-    # --- Build the agent (only once, right after locking) ---
-    if st.session_state.repo_locked and "agent" not in st.session_state:
-        status_box = st.empty()
-        progress_bar = st.progress(0)
+    def update_status(pct, message):
+        status_box.markdown(
+            f'<div class="loader-wrap"><div class="loader-spinner"></div>'
+            f'<div class="loader-text">{message}</div></div>',
+            unsafe_allow_html=True,
+        )
+        progress_bar.progress(min(pct, 100))
 
-        def update_status(pct, message):
-            status_box.markdown(
-                f'<div class="loader-wrap"><div class="loader-spinner"></div>'
-                f'<div class="loader-text">{message}</div></div>',
-                unsafe_allow_html=True,
-            )
-            progress_bar.progress(min(pct, 100))
+    agent = Agent(st.session_state.repo_input, status_callback=update_status)
+    st.session_state.agent = agent
+    st.session_state.file_tree_html = render_tree_html(build_file_tree(agent.repo_path))
 
-        agent = Agent(st.session_state.repo_input, status_callback=update_status)
-        st.session_state.agent = agent
-        st.session_state.file_tree_html = render_tree_html(build_file_tree(agent.repo_path))
+    status_box.empty()
+    progress_bar.empty()
+    st.rerun()
 
-        status_box.empty()
-        progress_bar.empty()
-        st.rerun()
-
-    # --- Chat ---
-    if not st.session_state.repo_locked:
-        st.info("Enter a local folder path or a public GitHub repo URL above, then click **Start**.")
-    elif "agent" in st.session_state:
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-with tree_col:
-    st.markdown("**Project files**")
-    with st.container(border=True, height=CONTENT_HEIGHT):
-        if st.session_state.file_tree_html:
-            st.markdown(st.session_state.file_tree_html, unsafe_allow_html=True)
-        else:
-            st.caption("Files will appear here once a repo is loaded.")
+# --- Chat ---
+if not st.session_state.repo_locked:
+    st.info("Enter a local folder path or a public GitHub repo URL above, then click **Start**.")
+elif "agent" in st.session_state:
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
 # Called at top level so Streamlit pins it to the bottom of the page
 if st.session_state.repo_locked and "agent" in st.session_state:
     question = st.chat_input("Ask about the codebase...")
     if question:
         st.session_state.messages.append({"role": "user", "content": question})
-        with st.spinner("Thinking..."):
-            answer = st.session_state.agent.ask(question)
+        with st.chat_message("user"):
+            st.markdown(question)
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                answer = st.session_state.agent.ask(question)
+            st.markdown(answer)
         st.session_state.messages.append({"role": "assistant", "content": answer})
         st.rerun()
