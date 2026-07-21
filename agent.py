@@ -128,7 +128,7 @@ class Agent:
             messages.append(msg)
             for tool_call in msg.tool_calls:
                 fn_name = tool_call.function.name
-                fn_args = json.loads(tool_call.function.arguments)
+                fn_args = json.loads(tool_call.function.arguments) or {}
                 print(f"  [tool call] {fn_name}({fn_args})")
 
                 result = self._call_tool(fn_name, fn_args)
