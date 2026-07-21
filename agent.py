@@ -4,7 +4,7 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 
-from embed_store import EmbedStore
+from embed_store import EmbedStore, build_index, INDEX_META_PATH
 from tools import semantic_search, read_file, list_directory, grep_search
 
 load_dotenv()
@@ -88,10 +88,33 @@ Always ground your answer in what the tools actually returned; do not guess at c
 Cite file paths and line numbers when relevant. If you're not confident after searching, say so."""
 
 
+def _get_indexed_source():
+    try:
+        with open(INDEX_META_PATH) as f:
+            return json.load(f).get("source")
+    except FileNotFoundError:
+        return None
+
+
 class Agent:
-    def __init__(self, repo_path: str):
-        self.repo_path = repo_path
+    def __init__(self, repo_path_or_url: str):
+        self.is_github = repo_path_or_url.startswith("https://github.com")
         self.store = EmbedStore()
+
+        indexed_source = _get_indexed_source()
+        needs_rebuild = self.store.count() == 0 or indexed_source != repo_path_or_url
+
+        if needs_rebuild:
+            print(f"Index is empty or for a different repo — rebuilding for: {repo_path_or_url}")
+            # wipe existing collection so old + new chunks don't mix
+            self.store.client.delete_collection(self.store.collection.name)
+            self.store, self.repo_path = build_index(repo_path_or_url)
+        elif self.is_github:
+            from github_ingest import download_github_repo
+            print(f"Using existing index. Downloading files for tool access: {repo_path_or_url}")
+            self.repo_path = download_github_repo(repo_path_or_url)
+        else:
+            self.repo_path = repo_path_or_url
 
     def _call_tool(self, name: str, args: dict):
         if name == "semantic_search":

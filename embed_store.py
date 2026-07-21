@@ -1,4 +1,5 @@
 # embed_store.py
+import json
 import chromadb
 from sentence_transformers import SentenceTransformer
 from ingest import ingest_repo
@@ -8,7 +9,7 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 
 COLLECTION_NAME = "codebase_chunks"
 DB_PATH = "./chroma_db"
-
+INDEX_META_PATH = "./chroma_db_meta.json"
 
 class EmbedStore:
     def __init__(self, db_path: str = DB_PATH):
@@ -51,20 +52,25 @@ class EmbedStore:
 
 
 def build_index(repo_path_or_url: str, db_path: str = DB_PATH):
-    """Full pipeline: ingest (local folder or GitHub URL) -> embed -> store."""
     if repo_path_or_url.startswith("https://github.com"):
-        print(f"Detected GitHub URL. Ingesting via API: {repo_path_or_url}")
-        from github_ingest import ingest_github_repo
-        chunks = ingest_github_repo(repo_path_or_url)
+        from github_ingest import download_github_repo
+        repo_path = download_github_repo(repo_path_or_url)
     else:
-        print(f"Ingesting local folder: {repo_path_or_url}")
-        chunks = ingest_repo(repo_path_or_url)
+        repo_path = repo_path_or_url
 
+    print(f"Ingesting: {repo_path}")
+    chunks = ingest_repo(repo_path)
     print(f"Got {len(chunks)} chunks. Embedding and storing...")
+
     store = EmbedStore(db_path)
     store.add_chunks(chunks)
+
+    # Record what's currently indexed
+    with open(INDEX_META_PATH, "w") as f:
+        json.dump({"source": repo_path_or_url}, f)
+
     print(f"Done. Collection now has {store.count()} chunks stored.")
-    return store
+    return store, repo_path
 
 
 if __name__ == "__main__":
