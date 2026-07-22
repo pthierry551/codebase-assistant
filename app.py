@@ -7,6 +7,21 @@ st.set_page_config(page_title="Codebase Assistant", page_icon="🔍", layout="wi
 
 st.markdown("""
 <style>
+.block-container {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+div[data-testid="stChatInput"] {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+div[data-testid="stBottomBlockContainer"] {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
 .loader-wrap {
     display: flex;
     align-items: center;
