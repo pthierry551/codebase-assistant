@@ -1,13 +1,16 @@
 # agent.py
 import os
 import json
-from dotenv import load_dotenv
 from groq import Groq
 
 from embed_store import EmbedStore, build_index, INDEX_META_PATH
 from tools import semantic_search, read_file, list_directory, grep_search
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # not installed — fine on Streamlit Cloud, which uses Secrets instead
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "llama-3.1-8b-instant"
